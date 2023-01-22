@@ -7,18 +7,21 @@ import time
 from dateutil.utils import today
 from spotipy.oauth2 import SpotifyOAuth
 
-CLIENT_ID='c287f4b6bc874c2ab63169028d5aedc1'
-CLIENT_SECRET='81f3641081dc4e50bc950346f1c2562a'
+CLIENT_ID = 'c287f4b6bc874c2ab63169028d5aedc1'
+CLIENT_SECRET = '81f3641081dc4e50bc950346f1c2562a'
 SPOTIPY_REDIRECT_URI = 'http://localhost:8080'
-SCOPE = "user-modify-playback-state playlist-modify-public user-read-currently-playing"
+SCOPE = "user-modify-playback-state playlist-modify-public user-read-currently-playing user-read-playback-state"
 CACHE = '.spotipyoauthcache'
 PORT = 8080
 
-sp = spotipy.Spotify(auth_manager=SpotifyOAuth(CLIENT_ID, CLIENT_SECRET,SPOTIPY_REDIRECT_URI,scope=SCOPE,cache_path=CACHE))
+sp = spotipy.Spotify(
+    auth_manager=SpotifyOAuth(CLIENT_ID, CLIENT_SECRET, SPOTIPY_REDIRECT_URI, scope=SCOPE, cache_path=CACHE))
 user_id = sp.me()['id']
+print(sp.current_playback())
 
 songList = []
 Timer = 0
+
 
 class Song:
     def __init__(self, uri, title, artist, duration, cover):
@@ -31,7 +34,8 @@ class Song:
 
 
 def songToJSON(song):
-    result = {'uri': song.URI, 'title': song.title, 'artist': song.artist, 'duration': song.duration, 'album_cover': song.cover}
+    result = {'uri': song.URI, 'title': song.title, 'artist': song.artist, 'duration': song.duration,
+              'album_cover': song.cover}
     jsonResult = json.dumps(result)
     jsonResult = json.loads(jsonResult)
     return jsonResult
@@ -49,10 +53,11 @@ def startTimer():
 
 
 def searchSong(title):
-    items = sp.search(title, type='track', limit=3)['tracks']['items']
+    items = sp.search(title, type='track', limit=5)['tracks']['items']
     results = []
     for item in items:
-        result = {'uri': item['uri'], 'title': item['name'], 'artist': item['artists'][0]['name'], 'duration': float(item['duration_ms']) / 1000,
+        result = {'uri': item['uri'], 'title': item['name'], 'artist': item['artists'][0]['name'],
+                  'duration': float(item['duration_ms']) / 1000,
                   'album_cover': item['album']['images'][0]['url']}
         results.append(result)
     jsonResults = json.dumps(results, indent=2)
@@ -61,8 +66,8 @@ def searchSong(title):
 
 def addToList(songJson):
     song = Song(songJson['uri'], songJson['title'], songJson['artist'], songJson['duration'], songJson['album_cover'])
-    if len(songList) == 0 and not sp.currently_playing():
-        sp.start_playback(song.URI)
+    if len(songList) == 0 and (sp.currently_playing() is None or sp.currently_playing()['is_playing'] is False):
+        sp.start_playback(uris=[song.URI], device_id=active_device_id)
         return
     if len(songList) == 0:
         startTimer()
@@ -83,7 +88,8 @@ def downvote(song):
 
 def createNewParty(name):
     date = today()
-    playlist = sp.user_playlist_create(user=user_id, name=name, public=True, collaborative=False, description=f"Playlist from {name} party, {date}")['id']
+    playlist = sp.user_playlist_create(user=user_id, name=name, public=True, collaborative=False,
+                                       description=f"Playlist from {name} party, {date}")['id']
     return playlist
 
 
@@ -106,9 +112,20 @@ def refresh():
 
 
 def login(auth):
-    global sp, user_id
+    global sp, user_id, devices, active_device_id
     sp = spotipy.Spotify(auth=auth)
     user_id = sp.me()['id']
+    devices = sp.devices()['devices']
+    num_devices = len(devices)
+    if num_devices == 0:
+        print("Alert! Please open Spotify in your device")
+        exit()
+    else:
+        active_device_id = devices[0]['id']
+        if num_devices > 1 and not devices[0]['is_active']:
+            for d in devices[1:]:
+                if d['is_active']:
+                    active_device_id = d['id']
 
 
 def main():
@@ -116,19 +133,21 @@ def main():
     option = eval(input())
     if option == 1:
         # Get auth_token
-        # login(auth_token)
+        login(
+            'BQD549gjI3xxSRSU9qwQKZ5ivrQupaTnrIFKFrsJIS4IDVsGuzLEMzjuUfdSvahEKvuACObFJqubNlq1EJqLchpFceqDKsLTgbPqzmZVl5kjZOPfQbculC9lrRdjnA5ddSrJCzv14WtTeGs81nPKFtOtbl1tSlVj5WEpRmlzIOtOaeuS0mOJLspn-ZW3GyOCQaWk2JLVhERqNivRqA7T-yI-XTrwuD1xMuVziQclo2eq5rtiRaRSxwVNuA')
         partyName = input("Name of your new party: ")
         playlist = createNewParty(partyName)
         print(f"{partyName} Created!")
     elif option == 2:
-        print() #TODO
+        print()  # TODO
     else:
         exit()
 
     # Assume now in common room
     # Search happens here
     print()
-    results = json.loads(searchSong("Daft Punk"))
+    results = json.loads(searchSong("Rauw Alejandro"))
+    print(results)
     for r in results:
         addToList(r)
     upvote(songList[0])
@@ -162,5 +181,6 @@ def main():
 
         if len(songList) != 0:
             Timer = 30
+
 
 main()
