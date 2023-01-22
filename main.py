@@ -10,14 +10,13 @@ from spotipy.oauth2 import SpotifyOAuth
 CLIENT_ID = 'c287f4b6bc874c2ab63169028d5aedc1'
 CLIENT_SECRET = '81f3641081dc4e50bc950346f1c2562a'
 SPOTIPY_REDIRECT_URI = 'http://localhost:8080'
-SCOPE = "user-modify-playback-state playlist-modify-public user-read-currently-playing user-read-playback-state"
+SCOPE = "user-modify-playback-state playlist-modify-public user-read-currently-playing"
 CACHE = '.spotipyoauthcache'
 PORT = 8080
 
 sp = spotipy.Spotify(
     auth_manager=SpotifyOAuth(CLIENT_ID, CLIENT_SECRET, SPOTIPY_REDIRECT_URI, scope=SCOPE, cache_path=CACHE))
 user_id = sp.me()['id']
-print(sp.current_playback())
 
 songList = []
 Timer = 0
@@ -67,10 +66,19 @@ def searchSong(title):
 def addToList(songJson):
     song = Song(songJson['uri'], songJson['title'], songJson['artist'], songJson['duration'], songJson['album_cover'])
     if len(songList) == 0 and (sp.currently_playing() is None or sp.currently_playing()['is_playing'] is False):
-        sp.start_playback(uris=[song.URI], device_id=active_device_id)
-        return
+        try:
+            sp.start_playback(uris=[song.URI])
+            time.sleep(0.1)
+            return
+        except:
+            print("Alert! Device is Inactive. Please resume playback from your spotify app")
+            return
     if len(songList) == 0:
         startTimer()
+    for s in songList:
+        if s.URI == song.URI:
+            print("Alert! This song is already in the list.")
+            return
     songList.append(song)
     refresh()
     return
@@ -87,7 +95,7 @@ def downvote(song):
 
 
 def createNewParty(name):
-    date = today()
+    date = today().date()
     playlist = sp.user_playlist_create(user=user_id, name=name, public=True, collaborative=False,
                                        description=f"Playlist from {name} party, {date}")['id']
     return playlist
@@ -112,20 +120,9 @@ def refresh():
 
 
 def login(auth):
-    global sp, user_id, devices, active_device_id
+    global sp, user_id
     sp = spotipy.Spotify(auth=auth)
     user_id = sp.me()['id']
-    devices = sp.devices()['devices']
-    num_devices = len(devices)
-    if num_devices == 0:
-        print("Alert! Please open Spotify in your device")
-        exit()
-    else:
-        active_device_id = devices[0]['id']
-        if num_devices > 1 and not devices[0]['is_active']:
-            for d in devices[1:]:
-                if d['is_active']:
-                    active_device_id = d['id']
 
 
 def main():
@@ -133,8 +130,7 @@ def main():
     option = eval(input())
     if option == 1:
         # Get auth_token
-        login(
-            'BQD549gjI3xxSRSU9qwQKZ5ivrQupaTnrIFKFrsJIS4IDVsGuzLEMzjuUfdSvahEKvuACObFJqubNlq1EJqLchpFceqDKsLTgbPqzmZVl5kjZOPfQbculC9lrRdjnA5ddSrJCzv14WtTeGs81nPKFtOtbl1tSlVj5WEpRmlzIOtOaeuS0mOJLspn-ZW3GyOCQaWk2JLVhERqNivRqA7T-yI-XTrwuD1xMuVziQclo2eq5rtiRaRSxwVNuA')
+        login('BQCFYenWLpENPerFoNQVDHYCJk1nxvY6UHR0K2kMyTKszWs44pkCvv6Vugqg5JJMM7DijDAwpNSIuCfPrndstIMbf9u-vL5ZIOGZyqZrJAHKTOGAjI1FUvC91q302LpaUKO6qOiibSa2HKkDgrOOmmefopnhR9bBsTaMuwkTZIhYb0iyIaLuO4q7czMYCqy6WbD8hzdQXF8xwgYkUVFlnscskcvZ0X2uPZ5eshdUoQ')
         partyName = input("Name of your new party: ")
         playlist = createNewParty(partyName)
         print(f"{partyName} Created!")
@@ -147,12 +143,8 @@ def main():
     # Search happens here
     print()
     results = json.loads(searchSong("Rauw Alejandro"))
-    print(results)
     for r in results:
         addToList(r)
-    upvote(songList[0])
-    upvote(songList[2])
-    downvote(songList[1])
 
     global Timer
 
@@ -175,9 +167,12 @@ def main():
 
         # Remove top song and add to queue
         if len(songList) != 0:
-            sp.add_to_queue(songList[0].URI)
-            sp.playlist_add_items(playlist, [songList[0].URI])
-            songList.pop(0)
+            try:
+                sp.add_to_queue(uri=songList[0].URI)
+                sp.playlist_add_items(playlist, [songList[0].URI])
+                songList.pop(0)
+            except:
+                print("Alert! Device is Inactive. Please resume playback from your spotify app")
 
         if len(songList) != 0:
             Timer = 30
